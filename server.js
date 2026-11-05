@@ -281,6 +281,72 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { console.error(e.message); if (!res.headersSent) send(res, 500, { error: 'Server error' }); }
 });
 
+// ---- Lead polling: works without publishing the Meta app (and doubles as a catch-up if a webhook is missed) ----
+// Every POLL_SECONDS (default 30; 0 turns it off) it lists each Page's lead forms, and fetches leads only for
+// forms whose lead count changed. The first time a form is seen it only records the count (no old leads imported).
+const POLL = path.join(__dirname, 'data', 'poll.json');
+const loadPoll = () => { try { return JSON.parse(fs.readFileSync(POLL, 'utf8')); } catch { return { forms: {} }; } };
+let pageList = [], pagesAt = 0, polling = false;
+
+async function fbGet(u) { const j = await (await fetch(u)).json(); if (j.error) throw new Error(j.error.message); return j; }
+
+async function discoverPages() {
+  const list = [];
+  for (const ut of userTokens()) {
+    let next = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&limit=100&access_token=${encodeURIComponent(ut)}`;
+    while (next) {
+      const j = await fbGet(next);
+      for (const pg of j.data || []) { savePageToken(pg.id, pg.access_token); if (!list.find(x => x.id === pg.id)) list.push({ id: pg.id, name: pg.name }); }
+      next = j.paging && j.paging.next;
+    }
+  }
+  pageList = list; pagesAt = Date.now();
+}
+
+async function pollLeads() {
+  if (polling) return; polling = true;
+  try {
+    if (!pageList.length || Date.now() - pagesAt > 10 * 60000) await discoverPages();
+    const st = loadPoll();
+    const seen = new Set(load().map(x => x.leadId));
+    for (const pg of pageList) {
+      const token = await getPageToken(pg.id);
+      let forms = [];
+      try {
+        let next = `https://graph.facebook.com/v21.0/${pg.id}/leadgen_forms?fields=id,name,leads_count&limit=100&access_token=${encodeURIComponent(token)}`;
+        while (next) { const j = await fbGet(next); forms = forms.concat(j.data || []); next = j.paging && j.paging.next; }
+      } catch (e) { console.error('Poll forms failed for', pg.name, e.message); continue; }
+      for (const f of forms) {
+        const prev = st.forms[f.id];
+        if (prev === undefined && f.leads_count !== undefined) { st.forms[f.id] = f.leads_count; continue; } // baseline
+        if (f.leads_count !== undefined && f.leads_count === prev) continue;
+        const fresh = [];
+        try {
+          let next = `https://graph.facebook.com/v21.0/${f.id}/leads?fields=id,created_time,ad_id,ad_name,form_id,field_data&limit=50&access_token=${encodeURIComponent(token)}`;
+          for (let pgNo = 0; next && pgNo < 10; pgNo++) {
+            const j = await fbGet(next);
+            const batch = (j.data || []).filter(l => !seen.has(l.id));
+            fresh.push(...batch);
+            if (batch.length < (j.data || []).length) break; // reached leads we already have
+            next = j.paging && j.paging.next;
+          }
+        } catch (e) { console.error('Poll leads failed for form', f.id, e.message); continue; }
+        fresh.sort((a, b) => Date.parse(a.created_time) - Date.parse(b.created_time));
+        for (const l of fresh) {
+          seen.add(l.id);
+          await processLead({ ...mapLead(l.field_data), leadId: String(l.id), pageId: pg.id, adName: clean(l.ad_name || f.name || '', 150), formId: String(f.id), source: 'facebook-lead-ad' })
+            .catch(e => console.error('Lead error', e.message));
+        }
+        if (f.leads_count !== undefined) st.forms[f.id] = f.leads_count;
+      }
+    }
+    fs.writeFileSync(POLL, JSON.stringify(st));
+  } catch (e) { console.error('Poll error', e.message); }
+  finally { polling = false; }
+}
+const POLL_SECONDS = parseInt(E.POLL_SECONDS || '30', 10);
+if (POLL_SECONDS > 0) setInterval(() => { if (userTokens().length) pollLeads(); }, POLL_SECONDS * 1000);
+
 refreshUserToken().catch(e => console.error('Refresh error', e.message));
 setInterval(() => refreshUserToken().catch(e => console.error('Refresh error', e.message)), 12 * 3600 * 1000);
 server.listen(PORT, () => console.log(`Server on :${PORT}  (next order #${(load().slice(-1)[0]?.orderNumber + 1) || START})`));
