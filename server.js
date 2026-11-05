@@ -79,7 +79,7 @@ async function pushToShopify(o) {
     note: `Facebook lead ${o.leadId || ''}. ${o.note || ''}`.trim(),
     tags: 'facebook-lead' + (o.pageId ? ',page-' + o.pageId : ''),
     shipping_address: addr, billing_address: addr, financial_status: 'pending',
-    line_items: variantFor(o) ? [{ variant_id: Number(variantFor(o)), quantity: 1 }] : [{ title: 'Order ' + o.orderNumber, price: '0.00', quantity: 1 }],
+    line_items: variantFor(o) ? [{ variant_id: Number(variantFor(o)), quantity: 1 }] : [{ title: o.adName || 'Facebook lead order', price: E.DEFAULT_PRICE || '0.00', quantity: 1 }],
   };
   const r = await fetch(`https://${E.SHOPIFY_STORE}/admin/api/2024-10/orders.json`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': await shopifyToken() }, body: JSON.stringify({ order }),
@@ -152,7 +152,7 @@ async function handleLead(leadgenId, pageId) {
   const r = await fetch(`https://graph.facebook.com/v21.0/${leadgenId}?access_token=${encodeURIComponent(token)}`);
   const j = await r.json();
   if (!r.ok) throw new Error('Graph API: ' + JSON.stringify(j));
-  await processLead({ ...mapLead(j.field_data), leadId: String(leadgenId), pageId: String(pageId || ''), source: 'facebook-lead-ad' });
+  await processLead({ ...mapLead(j.field_data), leadId: String(leadgenId), pageId: String(pageId || ''), adName: clean(j.ad_name || j.form_name || '', 150), formId: String(j.form_id || ''), source: 'facebook-lead-ad' });
 }
 
 async function processLead(o) {
