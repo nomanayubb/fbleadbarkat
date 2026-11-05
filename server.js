@@ -49,6 +49,21 @@ function createOrder(o) {
   return { order: o, dup: false };
 }
 
+// Shopify token: either a fixed SHOPIFY_TOKEN (shpat_...), or SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET
+// (Dev Dashboard apps): the server fetches a short-lived token itself and renews it automatically.
+let shopTok = { token: '', exp: 0 };
+async function shopifyToken() {
+  if (E.SHOPIFY_TOKEN) return E.SHOPIFY_TOKEN;
+  if (shopTok.token && Date.now() < shopTok.exp - 60000) return shopTok.token;
+  const r = await fetch(`https://${E.SHOPIFY_STORE}/admin/oauth/access_token`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: E.SHOPIFY_CLIENT_ID, client_secret: E.SHOPIFY_CLIENT_SECRET }) });
+  const j = await r.json();
+  if (!j.access_token) throw new Error('Shopify token request failed: ' + JSON.stringify(j));
+  shopTok = { token: j.access_token, exp: Date.now() + (j.expires_in || 86400) * 1000 };
+  return shopTok.token;
+}
+
 // Optional: different product per Page, e.g. PAGE_VARIANTS={"1393831823819607":"111","883258038206977":"222"}
 function variantFor(o) {
   try { const m = JSON.parse(E.PAGE_VARIANTS || '{}'); if (o.pageId && m[o.pageId]) return m[o.pageId]; } catch {}
@@ -56,7 +71,7 @@ function variantFor(o) {
 }
 
 async function pushToShopify(o) {
-  if (!E.SHOPIFY_STORE || !E.SHOPIFY_TOKEN) return null;
+  if (!E.SHOPIFY_STORE || !(E.SHOPIFY_TOKEN || (E.SHOPIFY_CLIENT_ID && E.SHOPIFY_CLIENT_SECRET))) return null;
   const [first, ...rest] = o.name.split(' ');
   const addr = { first_name: first, last_name: rest.join(' '), address1: o.address, city: o.city, zip: o.zip, phone: o.phone, country: o.country || E.SHOPIFY_COUNTRY || '' };
   const order = {
@@ -67,7 +82,7 @@ async function pushToShopify(o) {
     line_items: variantFor(o) ? [{ variant_id: Number(variantFor(o)), quantity: 1 }] : [{ title: 'Order ' + o.orderNumber, price: '0.00', quantity: 1 }],
   };
   const r = await fetch(`https://${E.SHOPIFY_STORE}/admin/api/2024-10/orders.json`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': E.SHOPIFY_TOKEN }, body: JSON.stringify({ order }),
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': await shopifyToken() }, body: JSON.stringify({ order }),
   });
   if (!r.ok) { console.error('Shopify push failed', r.status, await r.text()); return null; }
   const j = await r.json();
