@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Place Your Order</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222}
+  .card{max-width:480px;margin:24px auto;background:#fff;padding:24px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+  h1{margin:0 0 4px;font-size:22px} p.sub{margin:0 0 20px;color:#666;font-size:14px}
+  label{display:block;font-size:13px;font-weight:600;margin:14px 0 4px}
+  input,textarea{width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;font-family:inherit}
+  input:focus,textarea:focus{outline:2px solid #2563eb;border-color:transparent}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  button{width:100%;margin-top:20px;padding:14px;border:0;border-radius:8px;background:#16a34a;color:#fff;font-size:17px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.6} #err{color:#b91c1c;font-size:14px;margin-top:12px;min-height:18px}
+</style>
+</head>
+<body>
+<form class="card" id="f">
+  <h1>Complete Your Order</h1>
+  <p class="sub">Fill in your details and we'll deliver to your door.</p>
+
+  <label for="name">Full Name *</label>
+  <input id="name" name="name" required autocomplete="name" placeholder="Ali Khan">
+
+  <label for="phone">Phone Number *</label>
+  <input id="phone" name="phone" type="tel" required autocomplete="tel" placeholder="03XX XXXXXXX">
+
+  <label for="email">Email (optional)</label>
+  <input id="email" name="email" type="email" autocomplete="email">
+
+  <label for="address">Full Address *</label>
+  <textarea id="address" name="address" rows="2" required autocomplete="street-address" placeholder="House #, street, area"></textarea>
+
+  <div class="row">
+    <div><label for="city">City *</label><input id="city" name="city" required autocomplete="address-level2"></div>
+    <div><label for="zip">Postal Code</label><input id="zip" name="zip" autocomplete="postal-code"></div>
+  </div>
+
+  <label for="note">Note (optional)</label>
+  <input id="note" name="note">
+
+  <button id="btn" type="submit">Confirm Order</button>
+  <div id="err" role="alert"></div>
+</form>
+<script>
+const f = document.getElementById('f'), err = document.getElementById('err'), btn = document.getElementById('btn');
+f.addEventListener('submit', async e => {
+  e.preventDefault(); err.textContent = ''; btn.disabled = true;
+  const data = Object.fromEntries(new FormData(f));
+  data.source = new URLSearchParams(location.search).get('utm_source') || document.referrer || 'direct';
+  try {
+    const r = await fetch('/api/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Something went wrong');
+    location.href = '/thankyou?order=' + j.orderNumber;
+  } catch (x) { err.textContent = x.message; btn.disabled = false; }
+});
+</script>
+</body>
+</html>

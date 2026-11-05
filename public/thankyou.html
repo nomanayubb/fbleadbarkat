@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thank You</title>
+<style>
+  body{margin:0;font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222}
+  .card{max-width:480px;margin:48px auto;background:#fff;padding:32px 24px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);text-align:center}
+  .tick{width:64px;height:64px;border-radius:50%;background:#16a34a;color:#fff;font-size:36px;line-height:64px;margin:0 auto 16px}
+  h1{font-size:24px;margin:0 0 8px} p{color:#555;margin:6px 0}
+  .no{display:inline-block;margin-top:14px;padding:10px 20px;background:#ecfdf5;border:2px dashed #16a34a;border-radius:8px;font-size:26px;font-weight:800;letter-spacing:1px;color:#166534}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="tick">✓</div>
+  <h1 id="h">Thank you!</h1>
+  <p>Your order is confirmed.</p>
+  <p>Your order number is</p>
+  <div class="no" id="no">…</div>
+  <p style="margin-top:20px;font-size:14px">We'll call you shortly to confirm delivery.</p>
+</div>
+<script>
+const n = new URLSearchParams(location.search).get('order');
+document.getElementById('no').textContent = n || '';
+fetch('/api/order?n=' + encodeURIComponent(n)).then(r => r.ok ? r.json() : Promise.reject()).then(o => {
+  document.getElementById('h').textContent = 'Thank you, ' + o.name + '!';
+  document.getElementById('no').textContent = o.orderNumber;
+}).catch(() => { document.getElementById('no').textContent = n || 'N/A'; });
+</script>
+</body>
+</html>

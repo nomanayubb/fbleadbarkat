@@ -1,0 +1,33 @@
+<!-- Paste into the page barkatbooks.com/pages/order
+     (Shopify admin > Online Store > Pages > "order" > HTML "<>" button, paste, save).
+     Change SERVER below to your public server address. -->
+<div id="bk-order" style="max-width:480px;margin:32px auto;padding:28px 20px;text-align:center;font-family:system-ui,Arial,sans-serif">
+  <div style="width:64px;height:64px;border-radius:50%;background:#16a34a;color:#fff;font-size:36px;line-height:64px;margin:0 auto 16px">&#10003;</div>
+  <h1 id="bk-h" style="font-size:24px;margin:0 0 8px">Thank you!</h1>
+  <p>Your order is confirmed.</p>
+  <p id="bk-l">Getting your order number…</p>
+  <div id="bk-no" style="display:none;margin-top:10px;padding:10px 20px;background:#ecfdf5;border:2px dashed #16a34a;border-radius:8px;font-size:26px;font-weight:800;color:#166534"></div>
+</div>
+<script>
+(function () {
+  var SERVER = 'https://fbleadbarkat.onrender.com'; // <-- no trailing slash
+  var $ = function (id) { return document.getElementById(id); };
+  function show(o) {
+    $('bk-h').textContent = 'Thank you, ' + o.name + '!';
+    $('bk-l').textContent = 'Your order number is';
+    $('bk-no').textContent = o.orderNumber; $('bk-no').style.display = 'inline-block';
+  }
+  // Same device refreshing the page: show the same order again
+  try { var s = JSON.parse(localStorage.getItem('bk_order') || 'null'); if (s && Date.now() - s.t < 864e5) return show(s); } catch (e) {}
+  function claim(n) {
+    fetch(SERVER + '/api/claim')
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (o) { try { o.t = Date.now(); localStorage.setItem('bk_order', JSON.stringify(o)); } catch (e) {} show(o); })
+      .catch(function () {
+        if (n < 8) return setTimeout(function () { claim(n + 1); }, 1500);
+        $('bk-l').textContent = 'We will call you shortly with your order details.';
+      });
+  }
+  claim(0);
+})();
+</script>
