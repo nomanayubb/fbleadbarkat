@@ -155,6 +155,19 @@ async function handleLead(leadgenId, pageId) {
   await processLead({ ...mapLead(j.field_data), leadId: String(leadgenId), pageId: String(pageId || ''), adName: clean(j.ad_name || j.form_name || '', 150), formId: String(j.form_id || ''), source: 'facebook-lead-ad' });
 }
 
+// Adds every lead as a row in your Google Sheet (via a free Google Apps Script web app, see README-sheet.md).
+// Retries a few times; a sheet problem never blocks the order.
+async function logToSheet(o) {
+  if (!E.SHEET_WEBHOOK_URL) return;
+  const body = JSON.stringify({ secret: E.SHEET_SECRET || '', time: o.createdAt, orderNumber: o.orderNumber, name: o.name, phone: o.phone, email: o.email,
+    address: o.address, city: o.city, country: o.country, zip: o.zip, adName: o.adName, formId: o.formId, pageId: o.pageId, leadId: o.leadId });
+  for (let i = 0; i < 4; i++) {
+    try { const r = await fetch(E.SHEET_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body }); if (r.ok) return; } catch {}
+    await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+  }
+  console.error('Sheet write failed for order', o.orderNumber);
+}
+
 async function processLead(o) {
   const leadgenId = o.leadId;
   if (load().some(x => x.leadId === o.leadId) || inflight.has(o.leadId)) return;
@@ -165,6 +178,7 @@ async function processLead(o) {
     if (shopifyNo) { const orders = load(); o.orderNumber = shopifyNo; o.createdAt = new Date().toISOString(); orders.push(o); save(orders); }
     else createOrder(o);
     console.log(`Lead ${leadgenId} -> order #${o.orderNumber} (${o.name})`);
+    logToSheet(o);
   } finally { inflight.delete(o.leadId); }
 }
 
